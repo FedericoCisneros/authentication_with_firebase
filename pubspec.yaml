@@ -1,7 +1,8 @@
 name: authentication_with_firebase
 description: Athentication with firebase authentication
-version: 0.0.1
-homepage:
+version: 0.2.0
+homepage: https://github.com/FedericoCisneros/authentication_with_firebase.git
+
 
 environment:
   sdk: ">=2.7.0 <3.0.0"

@@ -1,8 +1,10 @@
+import 'dart:async';
+
 import 'package:authentication_with_firebase/src/exceptions/exception_codes.dart';
 import 'package:authentication_with_firebase/src/exceptions/exceptions.dart';
+import 'package:authentication_with_firebase/src/models/user.dart' as model;
 import 'package:authentication_with_firebase/src/util/util.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -14,15 +16,54 @@ class Authentication extends AuthenticationInterface {
   FirebaseAuth _auth = FirebaseAuth.instance;
   ActionCodeSettings actionCodeSettings;
 
-  Authentication({this.actionCodeSettings});
+  StreamController<model.User> _authChange = new StreamController.broadcast();
+
+  Authentication._() {
+    _auth.authStateChanges().listen((event) {
+      if (event == null)
+        _authChange.add(null);
+      else
+        _authChange.add(model.User(
+            uid: event.uid,
+            name: event.displayName,
+            emailVerified: event.emailVerified,
+            email: event.email,
+            phone: event.phoneNumber,
+            photo: event.photoURL,
+            isAnonymous: event.isAnonymous,
+            updateProfile: event.updateProfile));
+    });
+  }
+
+  static Authentication _instance;
+
+  static Authentication get instance {
+    if (_instance == null) {
+      _instance = Authentication._();
+    }
+    return _instance;
+  }
+
+  Stream<model.User> get authChanges => _authChange.stream;
 
   @override
-  Future<UserCredential> signInAnonymously() async {
-    return await _auth.signInAnonymously();
+  Future<model.User> signInAnonymously() async {
+    final credential = await _auth.signInAnonymously();
+    if (credential != null)
+      return model.User(
+          uid: credential.user.uid,
+          name: credential.user.displayName,
+          emailVerified: credential.user.emailVerified,
+          email: credential.user.email,
+          phone: credential.user.phoneNumber,
+          photo: credential.user.photoURL,
+          isAnonymous: credential.user.isAnonymous,
+          updateProfile: credential.user.updateProfile);
+    return null;
   }
 
   @override
-  Future<UserCredential> signInWithApple() async {
+  Future<model.User> signInWithApple() async {
     // To prevent replay attacks with the credential returned from Apple, we
     // include a nonce in the credential request. When signing in in with
     // Firebase, the nonce in the id token returned by Apple, is expected to
@@ -51,45 +92,66 @@ class Authentication extends AuthenticationInterface {
       rawNonce: rawNonce,
     );
 
-    UserCredential credential;
-    if (oauthCredential != null)
+    model.User user;
+    if (oauthCredential != null) {
       // Sign in the user with Firebase. If the nonce we generated earlier does
       // not match the nonce in `appleCredential.identityToken`, sign in will fail.
-      credential =
+      final credential =
           await FirebaseAuth.instance.signInWithCredential(oauthCredential);
-    return credential;
-  }
-
-  @override
-  Future<UserCredential> signInWithEmail(String email, String password) async {
-    return await _auth.signInWithEmailAndPassword(
-        email: email, password: password);
-  }
-
-  @override
-  Future<UserCredential> signInWithEmailAnonymous(
-      BuildContext context, String email, String password) async {
-    EmailAuthCredential emailAuthCredential =
-        EmailAuthProvider.credential(email: email, password: password);
-
-    UserCredential credential;
-    if (emailAuthCredential != null) {
-      credential = await _auth.signInWithCredential(emailAuthCredential);
+      if (credential != null) {
+        user = model.User(
+            uid: credential.user.uid,
+            name: credential.user.displayName,
+            emailVerified: credential.user.emailVerified,
+            email: credential.user.email,
+            phone: credential.user.phoneNumber,
+            photo: credential.user.photoURL,
+            isAnonymous: credential.user.isAnonymous,
+            updateProfile: credential.user.updateProfile);
+      }
     }
-    return credential;
+    return user;
   }
 
   @override
-  Future<UserCredential> signInWithEmailLink(String link) async {
+  Future<model.User> signInWithEmail(String email, String password) async {
+    final credential = await _auth.signInWithEmailAndPassword(
+        email: email, password: password);
+    if (credential != null)
+      return model.User(
+          uid: credential.user.uid,
+          name: credential.user.displayName,
+          emailVerified: credential.user.emailVerified,
+          email: credential.user.email,
+          phone: credential.user.phoneNumber,
+          photo: credential.user.photoURL,
+          isAnonymous: credential.user.isAnonymous,
+          updateProfile: credential.user.updateProfile);
+    return null;
+  }
+
+  @override
+  Future<model.User> signInWithEmailLink(String link) async {
     final storage = FlutterSecureStorage();
     String email = await storage.read(key: 'email');
 
-    UserCredential credential;
+    model.User user;
     if (email != null) {
       if (FirebaseAuth.instance.isSignInWithEmailLink(link)) {
         try {
-          credential = await FirebaseAuth.instance
+          final credential = await FirebaseAuth.instance
               .signInWithEmailLink(email: email, emailLink: link);
+          if (credential != null) {
+            user = model.User(
+                uid: credential.user.uid,
+                name: credential.user.displayName,
+                emailVerified: credential.user.emailVerified,
+                email: credential.user.email,
+                phone: credential.user.phoneNumber,
+                photo: credential.user.photoURL,
+                isAnonymous: credential.user.isAnonymous,
+                updateProfile: credential.user.updateProfile);
+          }
         } on FirebaseAuthException catch (e) {
           if (e.code == "expired-action-code")
             throw AuthenticationException(
@@ -103,29 +165,39 @@ class Authentication extends AuthenticationInterface {
       }
     }
 
-    if (credential != null) {
+    if (user != null) {
       await storage.delete(key: 'email');
-      return credential;
-    } else {
-      return null;
     }
+    return user;
   }
 
   @override
-  Future<UserCredential> signInWithFacebook() async {
+  Future<model.User> signInWithFacebook() async {
     final LoginResult result = await FacebookAuth.instance.login();
     OAuthCredential facebookCredential =
         FacebookAuthProvider.credential(result.accessToken.token);
 
-    UserCredential credential;
-    if (facebookCredential != null)
-      credential =
+    model.User user;
+    if (facebookCredential != null) {
+      final credential =
           await FirebaseAuth.instance.signInWithCredential(facebookCredential);
-    return credential;
+      if (credential != null) {
+        user = model.User(
+            uid: credential.user.uid,
+            name: credential.user.displayName,
+            emailVerified: credential.user.emailVerified,
+            email: credential.user.email,
+            phone: credential.user.phoneNumber,
+            photo: credential.user.photoURL,
+            isAnonymous: credential.user.isAnonymous,
+            updateProfile: credential.user.updateProfile);
+      }
+    }
+    return user;
   }
 
   @override
-  Future<UserCredential> signInWithGoogle() async {
+  Future<model.User> signInWithGoogle() async {
     final GoogleSignInAccount googleUser = await GoogleSignIn().signIn();
 
     final GoogleSignInAuthentication googleAuth =
@@ -136,10 +208,22 @@ class Authentication extends AuthenticationInterface {
       idToken: googleAuth.idToken,
     );
 
-    UserCredential credential;
-    if (googleCredential != null)
-      credential = await _auth.signInWithCredential(googleCredential);
-    return credential;
+    model.User user;
+    if (googleCredential != null) {
+      final credential = await _auth.signInWithCredential(googleCredential);
+      if (credential != null) {
+        user = model.User(
+            uid: credential.user.uid,
+            name: credential.user.displayName,
+            emailVerified: credential.user.emailVerified,
+            email: credential.user.email,
+            phone: credential.user.phoneNumber,
+            photo: credential.user.photoURL,
+            isAnonymous: credential.user.isAnonymous,
+            updateProfile: credential.user.updateProfile);
+      }
+    }
+    return user;
   }
 
   @override
@@ -166,9 +250,21 @@ class Authentication extends AuthenticationInterface {
   }
 
   @override
-  Future<UserCredential> signUpWithEmail(String email, String password) async {
-    return await _auth.createUserWithEmailAndPassword(
+  Future<model.User> signUpWithEmail(String email, String password) async {
+    final credential = await _auth.createUserWithEmailAndPassword(
         email: email, password: password);
+    if (credential != null) {
+      return model.User(
+          uid: credential.user.uid,
+          name: credential.user.displayName,
+          emailVerified: credential.user.emailVerified,
+          email: credential.user.email,
+          phone: credential.user.phoneNumber,
+          photo: credential.user.photoURL,
+          isAnonymous: credential.user.isAnonymous,
+          updateProfile: credential.user.updateProfile);
+    }
+    return null;
   }
 
   @override

@@ -1,3 +1,6 @@
-## [0.0.1] - TODO: Add release date.
+## [0.2.0] - 23/07/2021.
+Add user model
+Add authentication provider
 
-* TODO: Describe initial release.
+## [0.1.0] - 22/07/2021.
+Initial publish
