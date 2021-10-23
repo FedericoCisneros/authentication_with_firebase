@@ -1,5 +1,6 @@
 name: authentication_with_firebase
-description: Athentication with firebase authentication
+description: Package for authenticate flutter app using Firebase Authentication.
+  Support of authentication with email, dynamic link, anonymous, Google, Apple, Facebook
 version: 0.2.1
 homepage: https://github.com/FedericoCisneros/authentication_with_firebase.git
 
